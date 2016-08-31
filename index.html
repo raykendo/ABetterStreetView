@@ -1,0 +1,242 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>A Better StreetView</title>
+  <style>
+  .pane {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  width: 50%;
+  height: 50%;
+} 
+div > input[type=text] {
+  width: 99%;
+  line-height: 1.8;
+}
+td > input {
+  width: 98%;
+}
+#imagecontainer {
+  top: 0;
+  left: 0;
+}
+#imagecontainer > img {
+  width: 100%;
+  height: 100%;
+}
+
+#locationform {
+  top: auto;
+  bottom: 0;
+  left: 0;
+}
+#map {
+  top: auto;
+  left: auto;
+  right: 0;
+  bottom: 0;
+}
+#pano {
+  left: auto;
+  right: 0;
+}
+
+  </style>
+  <script type='text/javascript' src='https://maps.googleapis.com/maps/api/js'></script>
+  <script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.5.5/angular.min.js'></script>
+</head>
+<body>
+<div ng-app="BetterStreetViewApp">
+  <div ng-controller="SVImageController">
+    <div class="pane" id="imagecontainer">
+      <img class='StaticImage' ng-src="{{src}}" />
+    </div>
+    <table class="pane" id="locationform">
+      <tr>
+        <td>Location:</td>
+        <td>
+          <input ng-model="location" placeholder="Type address string or latitude,longitude" />
+        </td>
+      </tr>
+      <tr>
+        <td>Heading:</td>
+        <td>
+          <input ng-model="heading"
+                 placeholder="value of 0-360 degrees with 0 representing North"/>
+        </td>
+      </tr>
+      <tr>
+        <td>Pitch:</td>
+        <td>
+          <input ng-model="pitch" placeholder="range from -90 to 90 with 0 is looking straight ahead." />
+        </td>
+      </tr>
+      <tr>
+        <td>Field of View/Zoom:</td>
+        <td>
+          <input ng-model="fov" 
+                 placeholder="range from 90 to 0 with smaller numbers zooming in closer to center"/>
+        </td>
+      </tr>
+      <tr>
+        <td>Street View Image URL:</td>
+        <td>
+          <button ng-click="clearAll()">Clear</button>
+          <button ng-click="updateSrc()">Update Image</button>
+          <button ng-click="refreshAllMaps()">Update All</button>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          Copy and paste the URL in the textbox below for the image you want to use. 
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <input type="text" placeholder="Street View Image API URL" value="http://maps.googleapis.com/maps/api/streetview?location={{location}}&heading={{heading}}&pitch={{pitch}}&fov={{fov}}&size=640x480" style="width: 99%;"/>
+        </td>
+      </tr>
+    </table>
+  </div>
+  <div class="pane" id="map"></div>
+  <div class="pane" id="pano"></div>
+  
+</div>
+<script type='text/javascript'>
+(function() {
+  var app = angular.module("BetterStreetViewApp", []);
+
+  app.controller('SVImageController', ['$scope', function($scope) {
+
+    var geocodeDelayTO = null;
+
+    $scope.location = "42.345573,-71.098326";
+    $scope.heading = 34;
+    $scope.pitch = 10;
+    $scope.fov = 90;
+    $scope.src = "http://maps.googleapis.com/maps/api/streetview?size=500x300&location=&fov=90";
+	
+	$scope.clearAll = function () {
+		$scope.location = "";
+		$scope.heading = null;
+		$scope.pitch = null;
+		$scope.fov = 90;
+	};
+	
+    $scope.updateSrc = function() {
+      var data = [
+        "http://maps.googleapis.com/maps/api/streetview?size=500x300",
+        "location=" + $scope.location
+      ];
+
+      if ($scope.heading) {
+        data.push("heading=" + $scope.heading);
+      }
+
+      if ($scope.pitch) {
+        data.push("pitch=" + $scope.pitch);
+      }
+
+      if ($scope.fov < 90) {
+        data.push("fov=" + $scope.fov);
+      }
+      $scope.src = data.join("&");
+    };
+
+    $scope.refreshAllMaps = function() {
+      $scope.updateSrc();
+
+      var latLongReg = /^\-?\d*\.?\d+\,\-?\d*\.?\d+$/,
+		newval = $scope.location;
+
+      if (latLongReg.test(newval)) {
+        var ll = newval.split(","),
+          lat = parseFloat(ll[0]),
+          lng = parseFloat(ll[1]);
+        updateMap({
+          lat: lat,
+          lng: lng
+        });
+      } else {
+        //geocoding time.
+        if (geocodeDelayTO !== null) {
+          window.clearTimeout(geocodeDelayTO);
+          geocodeDelayTO = null;
+        }
+
+        if (newval) {
+          geocodeDelayTO = window.setTimeout(function() {
+            console.log("delayed...", newval);
+
+            geocoder.geocode({
+              address: newval
+            }, function(results, status) {
+              if (status === google.maps.GeocoderStatus.OK) {
+                updateMap(results[0].geometry.location);
+              } else {
+                alert('Geocode was not successful for the following reason: ' + status);
+              }
+            });
+          }, 1000);
+        }
+      }
+
+    };
+
+    // load google maps and Street view
+    var fenway = {
+      lat: 42.345573,
+      lng: -71.098326
+    };
+    var map = new google.maps.Map(document.getElementById('map'), {
+      center: fenway,
+      zoom: 14
+    });
+    var panorama = new google.maps.StreetViewPanorama(
+      document.getElementById('pano'), {
+        position: fenway,
+        pov: {
+          heading: 34,
+          pitch: 0
+        }
+      });
+    map.setStreetView(panorama);
+    var geocoder = new google.maps.Geocoder();
+
+    // function to update map and panorama
+    function updateMap(coords) {
+	  console.log("coordinates: ", coords);
+      map.setCenter(coords);
+      panorama.setPosition(coords);
+    };
+
+    // as panorama is moved around, update coordinates in location
+    panorama.addListener("position_changed", function() {
+      var pos = panorama.getPosition();
+      var latLongString = [pos.lat(), pos.lng()].join(",");
+      if (latLongString !== $scope.location) {
+        $scope.$apply(function() {
+          $scope.location = latLongString;
+        });
+      }
+
+    });
+
+    // as panorama pov changes, update heading and pitch
+    panorama.addListener("pov_changed", function() {
+      var pov = panorama.getPov();
+      if (pov.heading !== $scope.heading || pov.pitch !== $scope.pitch) {
+        $scope.$apply(function() {
+          $scope.heading = pov.heading;
+          $scope.pitch = pov.pitch;
+        });
+      }
+    });
+
+  }]);
+
+})();
+</script>
+</body>
+</html>
